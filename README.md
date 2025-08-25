@@ -1,4 +1,4 @@
-# fakutrama backup
+# fakturama backup
 Used to backup the IPV Fakturama database.
 
 ## Use
