@@ -83,6 +83,25 @@ class FilenameTemplate:
         """
         return self._date_format
     
+    def for_date(self, date: dt.date) -> str:
+        """Create a filename for the given date.
+
+        Args:
+            date (dt.date): Date.
+
+        Returns:
+            str: Filename for the date provided.
+        """
+        return f"{self._prefix}{date.strftime(self._date_format)}{self._postfix}"
+
+    def today(self) -> str:
+        """Create a template representing today's date.
+
+        Returns:
+            str: Filename for today.
+        """
+        return self.for_date(dt.date.today())
+    
     def match(self, filename: str) -> Optional[dt.date]:
         """Test whether a string matches the template.
 
@@ -136,6 +155,9 @@ def parse_command_line_arguments() -> argparse.Namespace:
         description="Backup a Faktuama database.",
         epilog="The newest backups are retained.",
     )
+    parser.add_argument("-u", "--username", type=str, required=True, help="Database username.")
+    parser.add_argument("-p", "--password", type=str, required=True, help="Database password.")
+    parser.add_argument("-db", "--database", type=str, required=True, help="Database.")
     parser.add_argument(
         "-r", "--retain", type=positive_int, default=7, help="Number of backups to retain. The newest backups are retained."
     )
@@ -143,17 +165,18 @@ def parse_command_line_arguments() -> argparse.Namespace:
         "-f",
         "--file",
         type=FilenameTemplate,
-        default="faturama.[[%Y%m%d]].bak.sql",
+        default=f"faturama.{TEMPLATE_DATE_PLACEHOLDER_START}%Y%m%d{TEMPLATE_DATE_PLACEHOLDER_END}.bak.sql",
         help=f"Filename template. Date format must be included between `{TEMPLATE_DATE_PLACEHOLDER_START}` and `{TEMPLATE_DATE_PLACEHOLDER_END}` and in replaced by the date the backup is created.",
     )
     parser.add_argument("--dir", type=str, default=".", help="Directory in which to store backups. Can be relative or absolute.")
+    
     parser.add_argument("-n", "--notify", type=str, default=None, help="Email address to send notifications on error.")
-    parser.add_argument("-u", "--username", type=str, default=None, help="Email SMTP username.")
-    parser.add_argument("-p", "--password", type=str, default=None, help="Email SMTP password.")
+    parser.add_argument("--notify-username", type=str, default=None, help="Email SMTP username.")
+    parser.add_argument("--notify-password", type=str, default=None, help="Email SMTP password.")
     args = parser.parse_args()
     
-    if args.notify is not None and (args.username is None or args.password is None):
-        parser.error("--notify requires --username and --password")
+    if args.notify is not None and (args.notify_username is None or args.notify_password is None):
+        parser.error("--notify requires --notify-username and --notify-password")
     
     return args
     
@@ -178,18 +201,23 @@ def send_error_email(credentials: EmailCredentials, status: subprocess.Completed
         server.send_message(msg)
 
     
-def create_backup(template: FilenameTemplate, directory: str | os.PathLike = ".", notify: Optional[EmailCredentials] = None):
+def create_backup(username: str, password: str, database: str, template: FilenameTemplate, directory: str | os.PathLike = ".", notify: Optional[EmailCredentials] = None):
     """Create a backup of the database.
 
     Args:
+        username (str): Database username.
+        password (str): Database password.
+        database (str): Database.
         template (FilenameTemplate): Template for naming the backup file.
         directory (str | os.PathLike, optional): Directory to place the backup file in. Defaults to ".".
         notify (Optional[EmailCredentials], optional): Email credentials used to send notification in case of error. Defaults to None.
     """
-    # TODO
-    raise NotImplementedError()
-    status = subprocess.run([])
-    if status != 0 and notify is not None:
+    filename = template.today()
+    path = os.path.join(directory, filename)
+    with open(path, "w") as file:
+        status = subprocess.run(["mysqldump", f"--user={username}", f"--password={password}", database], stdout=file)
+    
+    if status.returncode != 0 and notify is not None:
         send_error_email(notify, status)
         
 
@@ -239,9 +267,9 @@ if __name__ == "__main__":
         import smtplib
         import ssl
         from email.message import EmailMessage
-        notify = EmailCredentials(args.notify, args.username, args.password)    
+        notify = EmailCredentials(args.notify, args.notify_username, args.notify_password)    
     
-    create_backup(args.file, args.dir, notify)
+    create_backup(args.username, args.password, args.database, args.file, args.dir, notify)
     backups = find_backups(args.file, args.dir)
     discard = filter_discard_backups(backups, args.retain)
     for (_, path) in discard:
