@@ -6,6 +6,11 @@ Intended to be used as a shell script for a cron job.
 ```bash
 python fakturama_backup.py -u <username> -p <password> -db <database> [other options]
 ```
+### Notifications
+If an error occurs during backup an email can be sent. To configure this pass the arguments
++ `-n`/`--notify` Email address to send notifications on error (e.g. `first.last@ipv.uni-stuttgart.de`)
++ `--notify-username` Email SMTP username (`ac` number)
++ `--notify-password` Email SMTP password (password associated with the `ac` account)
 
 ## Dependencies
 1. [`mysqldump`](https://dev.mysql.com/doc/refman/8.4/en/mysqldump.html) must be installed and in the `PATH` environment variable.
